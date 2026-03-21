@@ -4,13 +4,46 @@ import os
 import h5py
 import random
 
+# rawdataset.h5
+# ├── raw/                        ← original data from all 9 CSV files
+# │   ├── Tony/
+# │   │   ├── Back
+# │   │   ├── Front
+# │   │   └── Right
+# │   ├── Thomas/
+# │   └── William/
+# │
+# ├── pre_processed/              ← smoothed data using MA filter (window=5)
+# │   ├── Tony/
+# │   │   ├── Back
+# │   │   ├── Front
+# │   │   └── Right
+# │   ├── Thomas/
+# │   └── William/
+# │
+# └── segmented/                  ← 5-second windows, shuffled, split 90/10
+#     ├── train/
+#     │   ├── windows 
+#     │   └── labels  
+#     └── test/
+#         ├── windows  
+#         └── labels   
+
 # df the oridinal pandas dataframs
 
 WINDOW_MA = 5 # take the 4 neighbor around and replace the current value with the average of those 5 values
 
-
 members = ["Tony", "Thomas", "William"]
 actions = ["Back", "Front", "Right"]
+
+# creat the segmented data and save it in the hdf5 file
+windows_all = [] # for 5-sec 
+labels_all = [] #0 for walking 1 for jumping
+
+# sampling_rate = 200 # 200Hz
+window_size = 1000 # 5 seconds 0.005s per line
+
+
 
 # creat HDF5 file and write data w 
 with h5py.File("rawdataset.h5", "w") as f:
@@ -32,10 +65,7 @@ with h5py.File("rawdataset.h5", "w") as f:
             dset = member_group.create_dataset(action, data=data_raw)
             #print(f"[RAW] {member}/{action} → {data_raw.shape}") # print the member, action and shape of the raw data
             # dset.attrs["columns"] = df.select_dtypes(include=[np.number]).columns.tolist()
-
-
 # ── pre processed data  (Moving Average filter) ────────────
-
     pre_processed_group = f.create_group("pre_processed") # the main group for pre-processed data = pre_processed
 
     for member in members:
@@ -56,17 +86,10 @@ with h5py.File("rawdataset.h5", "w") as f:
             #  text, member, action, shape of the pre-processed data
             print(f"[PREPROCESSED] {member}/{action} -> {data_pre.shape}")
             
-print("done pre-processing and load the raw data and saving to rawdataset.h5")
-print()
+    #print("done pre-processing and load the raw data and saving to rawdataset.h5")
+    #print()
 
-# creat the segmented data and save it in the hdf5 file
-windows_all = [] # for 5-sec 
-labels_all = [] #0 for walking 1 for jumping
-
-# sampling_rate = 200 # 200Hz
-window_size = 1000 # 5 seconds 0.005s per line
-
-with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
+#with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
     for member in members:
         for action in actions:
             # read the pre-processed data from the hdf5 file
@@ -94,36 +117,36 @@ with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add
                 labels_all.append(1) 
                 i += window_size
 
-# convert lists to numpy arrays
-windows_all = np.array(windows_all)  # shape: (total_windows, 1000, 5)
-labels_all = np.array(labels_all)    
-print(f"Total windows: {len(windows_all)}, Total labels: {len(labels_all)}")
-print()
+    # convert lists to numpy arrays
+    windows_all = np.array(windows_all)  # shape: (total_windows, 1000, 5)
+    labels_all = np.array(labels_all)    
+    print(f"Total windows: {len(windows_all)}, Total labels: {len(labels_all)}")
+    print()
 
 #-------segmented data ---------------------------------------------------------------------------------------
-x = random.randint(1, 10)
-# shuffle the windows 
-pairs = list(zip(windows_all, labels_all)) # create pairs of windows and labels zip make the 2 array to one array of pairs w-w1 l - 0 to p -w1, 0
-random.seed(18) # replace 18 to x to make it really random
-random.shuffle(pairs)
-windows_all, labels_all = zip(*pairs) # unzip the pairs back to windows and labels
-windows_all = np.array(windows_all) # back to 2 array 
-labels_all = np.array(labels_all) # convert back to numpy array
+    x = random.randint(1, 10)
+    # shuffle the windows 
+    pairs = list(zip(windows_all, labels_all)) # create pairs of windows and labels zip make the 2 array to one array of pairs w-w1 l - 0 to p -w1, 0
+    random.seed(18) # replace 18 to x to make it really random
+    random.shuffle(pairs)
+    windows_all, labels_all = zip(*pairs) # unzip the pairs back to windows and labels
+    windows_all = np.array(windows_all) # back to 2 array 
+    labels_all = np.array(labels_all) # convert back to numpy array
 
-# 90:10 split
-split_index = int(0.9 * len(windows_all)) # 90% for the training 
+    # 90:10 split
+    split_index = int(0.9 * len(windows_all)) # 90% for the training 
 
-train_window = windows_all[:split_index] # take the first 90% of the windows for training
-train_labels = labels_all[:split_index] # take the first 90% of the
+    train_window = windows_all[:split_index] # take the first 90% of the windows for training
+    train_labels = labels_all[:split_index] # take the first 90% of the
 
-test_window = windows_all[split_index:] # take the last 10% of the windows for testing
-test_labels = labels_all[split_index:] # take the last 10% of the
+    test_window = windows_all[split_index:] # take the last 10% of the windows for testing
+    test_labels = labels_all[split_index:] # take the last 10% of the
 
-print(f"train: {len(train_window)}, test: {len(test_window)}")
-print()
+    print(f"train: {len(train_window)}, test: {len(test_window)}")
+    print()
 
 # save to HDF5_file / creat.group is making the folder and create dataset is making the file and save the data in it.
-with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
+#with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
     seg_group = f.create_group("segmented")#the main group for seg. rawdataset.h5/segmented
 
     train_group = seg_group.create_group("train") # subgroup for seg
@@ -136,12 +159,14 @@ with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add
     test_group_window = test_group.create_dataset("windows", data=test_window) 
     test_group_labels = test_group.create_dataset("labels", data=test_labels) 
 
-print("Segmented data saved to rawdataset.h5")
-print()
+    print("Segmented data saved to rawdataset.h5")
+    print()
 
 
-#check for the data set
-print("Checking the contents of rawdataset.h5:") # ok to remove this print statement, just for checking the data set
+    #check for the data set
+    print("Checking the contents of rawdataset.h5:") # ok to remove this print statement, just for checking the data set
+
+
 with h5py.File("rawdataset.h5", "r") as f:
     for member in ["Tony", "Thomas", "William"]:
         for action in ["Back", "Front", "Right"]:
@@ -150,11 +175,12 @@ with h5py.File("rawdataset.h5", "r") as f:
             # check pre_processed
             pre_exists = f"pre_processed/{member}/{action}" in f
             print(f"{member}/{action} -> raw: {raw_exists}, pre_processed: {pre_exists}")
-            # check segmented data
-            seg_exists = f"segmented/{member}/{action}" in f
-            print(f"{member}/{action} -> segmented: {seg_exists}")
-
-    print(f"Segmented data exists: {'segmented' in f}")
+    #print(f"\nsegmented/train/windows : {f['segmented/train/windows'].shape}")
+    #print(f"segmented/train/labels  : {f['segmented/train/labels'].shape}")
+    #print(f"segmented/test/windows  : {f['segmented/test/windows'].shape}")
+    #print(f"segmented/test/labels   : {f['segmented/test/labels'].shape}")
+    seg_exists = "segmented/train/windows" in f and "segmented/train/labels" in f and "segmented/test/windows" in f and "segmented/test/labels" in f
+    print(f" segmented: {seg_exists}")
 
 
 
