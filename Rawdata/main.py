@@ -90,7 +90,38 @@ with h5py.File("rawdataset.h5", "w") as f:
     #print("done pre-processing and load the raw data and saving to rawdataset.h5")
     #print()
 
-#with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
+#----step 3 visulization ------------------------------
+    import matplotlib.pyplot as plt
+    with h5py.File("rawdataset.h5", "r") as f:
+        raw_sample = f["raw/Tony/Back"][:1000]
+        pre_sample = f["pre_processed/Tony/Back"][:1000]
+
+    #plot the raw data
+    plt.figure(figsize = (10,5))
+    plt.plot(raw_sample[:, 0], label="Raw X")
+    plt.plot(raw_sample[:, 1], label="Raw Y")
+    plt.plot(raw_sample[:, 2], label="Raw Z")
+    plt.title("Raw Acceleration - (Tony/Back)")
+    plt.xlabel("Sample Index (Time)")
+    plt.ylabel("Acceleration")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    #plot the pre-processed data
+    plt.figure(figsize=(10,5))
+    plt.plot(pre_sample[:, 0], label="Preprocessed X")
+    plt.plot(pre_sample[:, 1], label="Preprocessed Y")
+    plt.plot(pre_sample[:, 2], label="Preprocessed Z")
+    plt.title("Preprocessed Acceleration - (Tony/Back)")
+    plt.xlabel("Sample Index (Time)")
+    plt.ylabel("Acceleration")
+    plt.legend()    
+    plt.grid(True)
+    plt.show()
+
+
+with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
     for member in members:
         for action in actions:
             # read the pre-processed data from the hdf5 file
