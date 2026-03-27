@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import h5py
 import random
+from scipy.signal import butter, filtfilt
 
 # rawdataset.h5
 # ├── raw/                        ← original data from all 9 CSV files
@@ -44,7 +45,6 @@ labels_all = [] #0 for walking 1 for jumping
 window_size = 1000 # 5 seconds 0.005s per line
 
 
-
 # creat HDF5 file and write data w 
 with h5py.File("rawdataset.h5", "w") as f:
     #df = pd.read_csv("rawdata/Tony/Back/Raw Data.csv")
@@ -65,7 +65,17 @@ with h5py.File("rawdataset.h5", "w") as f:
             dset = member_group.create_dataset(action, data=data_raw)
             #print(f"[RAW] {member}/{action} → {data_raw.shape}") # print the member, action and shape of the raw data
             # dset.attrs["columns"] = df.select_dtypes(include=[np.number]).columns.tolist()
-# ── pre processed data  (Moving Average filter) ────────────
+
+# ── pre processed data  (Moving Average filter + High Pass Filter) ────────────
+    def highpass_filter(data, cutoff=0.5, fs=200, order=4):
+        # cutoff = remove anything slower than 0.5Hz (the drift)
+        # fs = sampling rate 200Hz
+        # order = how strong the filter is
+        nyq = fs / 2                    # nyquist frequency = half of sampling rate
+        normal_cutoff = cutoff / nyq    # normalize the cutoff frequency
+        b, a = butter(order, normal_cutoff, btype='high', analog=False)
+        return filtfilt(b, a, data, axis=0)  # apply filter to all columns
+
     pre_processed_group = f.create_group("pre_processed") # the main group for pre-processed data = pre_processed
 
     for member in members:
@@ -81,8 +91,19 @@ with h5py.File("rawdataset.h5", "w") as f:
             df_smoothed = df_pre.select_dtypes(include=[np.number]).rolling(window=WINDOW_MA, center=True).mean()
             df_smoothed = df_smoothed.bfill().ffill()
 
-            data_pre = df_smoothed.to_numpy()
+            data_pre = df_smoothed.to_numpy() 
             dset_pre = member_group.create_dataset(action, data=data_pre)
+
+            df_pre = df_pre.bfill()
+
+            # the high pass filter, remove the drift, use the function we creat before
+            # step 1 - moving average to smooth noise
+            df_smoothed = df_pre.select_dtypes(include=[np.number]).rolling(
+                window=WINDOW_MA, center=True).mean()
+            df_smoothed = df_smoothed.bfill().ffill()
+
+            # step 2 - high pass filter to remove drift
+            data_pre = highpass_filter(df_smoothed.to_numpy())
 
             #  text, member, action, shape of the pre-processed data
             print(f"[PREPROCESSED] {member}/{action} -> {data_pre.shape}")
@@ -91,10 +112,10 @@ with h5py.File("rawdataset.h5", "w") as f:
     #print()
 
 #----step 3 visulization ------------------------------
-    import matplotlib.pyplot as plt
-    with h5py.File("rawdataset.h5", "r") as f:
-        raw_sample = f["raw/Tony/Back"][:1000]
-        pre_sample = f["pre_processed/Tony/Back"][:1000]
+import matplotlib.pyplot as plt
+with h5py.File("rawdataset.h5", "r") as f:
+    raw_sample = f["raw/Tony/Back"][:1000]
+    pre_sample = f["pre_processed/Tony/Back"][:1000]
 
     #plot the raw data
     plt.figure(figsize = (10,5))
@@ -120,7 +141,7 @@ with h5py.File("rawdataset.h5", "w") as f:
     plt.grid(True)
     plt.show()
 
-
+# --------------segmentation class----------------------
 with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add the segmented data
     for member in members:
         for action in actions:
@@ -155,7 +176,7 @@ with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add
     print(f"Total windows: {len(windows_all)}, Total labels: {len(labels_all)}")
     print()
 
-#-------segmented data ---------------------------------------------------------------------------------------
+#-------segmented data math ---------------------------------------------------------------------------------------
     x = random.randint(1, 10)
     # shuffle the windows 
     pairs = list(zip(windows_all, labels_all)) # create pairs of windows and labels zip make the 2 array to one array of pairs w-w1 l - 0 to p -w1, 0
@@ -194,25 +215,24 @@ with h5py.File("rawdataset.h5", "a") as f: # open the file in append mode to add
     print("Segmented data saved to rawdataset.h5")
     print()
 
-
     #check for the data set
     print("Checking the contents of rawdataset.h5:") # ok to remove this print statement, just for checking the data set
 
 
-with h5py.File("rawdataset.h5", "r") as f:
-    for member in ["Tony", "Thomas", "William"]:
-        for action in ["Back", "Front", "Right"]:
-            # check raw, just check every file exist or not. for what is in side the file no idear
-            raw_exists = f"raw/{member}/{action}" in f
-            # check pre_processed
-            pre_exists = f"pre_processed/{member}/{action}" in f
-            print(f"{member}/{action} -> raw: {raw_exists}, pre_processed: {pre_exists}")
-    #print(f"\nsegmented/train/windows : {f['segmented/train/windows'].shape}")
-    #print(f"segmented/train/labels  : {f['segmented/train/labels'].shape}")
-    #print(f"segmented/test/windows  : {f['segmented/test/windows'].shape}")
-    #print(f"segmented/test/labels   : {f['segmented/test/labels'].shape}")
-    seg_exists = "segmented/train/windows" in f and "segmented/train/labels" in f and "segmented/test/windows" in f and "segmented/test/labels" in f
-    print(f" segmented: {seg_exists}")
+# with h5py.File("rawdataset.h5", "r") as f:
+#     for member in ["Tony", "Thomas", "William"]:
+#         for action in ["Back", "Front", "Right"]:
+#             # check raw, just check every file exist or not. for what is in side the file no idear
+#             raw_exists = f"raw/{member}/{action}" in f
+#             # check pre_processed
+#             pre_exists = f"pre_processed/{member}/{action}" in f
+#             print(f"{member}/{action} -> raw: {raw_exists}, pre_processed: {pre_exists}")
+#     #print(f"\nsegmented/train/windows : {f['segmented/train/windows'].shape}")
+#     #print(f"segmented/train/labels  : {f['segmented/train/labels'].shape}")
+#     #print(f"segmented/test/windows  : {f['segmented/test/windows'].shape}")
+#     #print(f"segmented/test/labels   : {f['segmented/test/labels'].shape}")
+#     seg_exists = "segmented/train/windows" in f and "segmented/train/labels" in f and "segmented/test/windows" in f and "segmented/test/labels" in f
+#     print(f" segmented: {seg_exists}")
 
 
 
@@ -229,12 +249,12 @@ with h5py.File("rawdataset.h5", "r") as f:
 
 # -------- Feature Extraction --------
 def extract_features(window):
-    window = window[:, :3]
+    window = window[:, :3] # take only the first 3 columns for x, y, z acceleration
 
     features = []
     
-    for axis in range(window.shape[1]):
-        data = window[:, axis]
+    for axis in range(window.shape[1]): # loop through each axis x, y, z
+        data = window[:, axis] 
         
         features.append(np.mean(data))
         features.append(np.std(data))
@@ -243,11 +263,11 @@ def extract_features(window):
         features.append(np.ptp(data))
 
     #magnitude
-    mag = np.sqrt(window[:,0]**2 + window[:,1]**2 + window[:,2]**2)
+    mag = np.sqrt(window[:,0]**2 + window[:,1]**2 + window[:,2]**2) #mag = √(x² + y² + z²)
     features.append(np.mean(mag))
     features.append(np.std(mag))
 
-    return np.array(features)
+    return np.array(features) # return a 16 dimensional feature vector for each window. 
 
 
 #feature extraction
@@ -255,21 +275,21 @@ X_train = np.array([extract_features(w) for w in train_window])
 X_test = np.array([extract_features(w) for w in test_window])
 
 #normalization
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler # standard scaler is a common method for normalizing features
 
-scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
+scaler = StandardScaler() # create an instance of the StandardScaler
+X_train = scaler.fit_transform(X_train) # fit the scaler to tarin data and transform it
 X_test = scaler.transform(X_test)
 
 
 #model training
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression 
 from sklearn.metrics import accuracy_score
 
-model = LogisticRegression(max_iter=1000)
-model.fit(X_train, train_labels)
-y_pred = model.predict(X_test)
-print("Accuracy:", accuracy_score(test_labels, y_pred))
+model = LogisticRegression(max_iter=1000) # create a logistic regression model max_iter is the maximum number of iterations for the solver to converge
+model.fit(X_train, train_labels) 
+y_pred = model.predict(X_test) # use trained model to predict labels for test windows
+print("Accuracy:", accuracy_score(test_labels, y_pred))# print the accuracy of the model on the test set
 
 
 
@@ -277,13 +297,11 @@ print("Accuracy:", accuracy_score(test_labels, y_pred))
 from sklearn.model_selection import learning_curve
 import matplotlib.pyplot as plt
 
-train_sizes, train_scores, test_scores = learning_curve(
-    model, X_train, train_labels, cv=5, scoring='accuracy'
-)
+train_sizes, train_scores, test_scores = learning_curve(model, X_train, train_labels, cv=5, scoring='accuracy') # tests the model with different amounts of training data
 
-train_mean = train_scores.mean(axis=1)
+train_mean = train_scores.mean(axis=1) #  average the scores across the 5 splits
 test_mean = test_scores.mean(axis=1)
-
+# graph the 2 line for training and validation accuracy as the training size increases.
 plt.plot(train_sizes, train_mean, label="Training Accuracy")
 plt.plot(train_sizes, test_mean, label="Validation Accuracy")
 
